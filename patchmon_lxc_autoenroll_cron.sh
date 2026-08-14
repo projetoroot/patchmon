@@ -332,9 +332,12 @@ enroll_container() {
     local api_id
     local api_key
 
-    friendly_name="$hostname"
+    # Friendly Name no PatchMon
+    # Exemplo: CT-214-hhh
+    friendly_name="CT-${vmid}-${hostname}"
 
     info "  Fazendo enrollment no PatchMon..."
+    info "  Friendly Name: $friendly_name"
 
     response=$(curl $CURL_FLAGS \
         -X POST \
@@ -369,6 +372,7 @@ enroll_container() {
             fi
 
             info "  ✓ Host criado no PatchMon: $api_id"
+            info "  ✓ Friendly Name: $friendly_name"
 
             install_agent "$vmid" "$api_id" "$api_key" "$architecture"
             return $?
@@ -377,7 +381,6 @@ enroll_container() {
 
         409)
             info "  Host já está cadastrado no PatchMon."
-
             return 2
             ;;
 
@@ -388,6 +391,7 @@ enroll_container() {
             ;;
     esac
 }
+
 
 # ------------------------------------------------------------
 # Descoberta dos containers

@@ -3,6 +3,19 @@ Ajustes e Configurações para o software.
 
 Scripts de auto-enroll
 
+Para funcionar de maneira automática tanto o LXC como para VM, é necessário colocar na Cron conforme o exemplo:
+
+root@pve:~# cat /etc/crontab 
+
+...
+
+*/5 * * * * root /root/patchmon_enroll_cron.sh
+
+*/5 * * * * root /root/patchmon_enroll_vm.sh
+
+...
+
+
 # Comparação: Auto-Enrollment Oficial do PatchMon vs Script Proxmox do Projeto Root
 
 | Característica | Script oficial do PatchMon | Script Proxmox personalizado |

@@ -7,7 +7,7 @@ PATCHMON_URL="IP:PORTA"
 AUTO_ENROLLMENT_KEY="SUA-KEY-API"
 AUTO_ENROLLMENT_SECRET="SUA-SECRET-KEY"
 
-LOG_FILE="/var/log/patchmon-proxmox.log"
+LOG_FILE="/var/log/patchmon-proxmox-lxc.log"
 
 CURL_FLAGS="-s"
 SKIP_STOPPED=true

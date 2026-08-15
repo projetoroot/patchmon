@@ -72,7 +72,6 @@ vm_exec() {
     fi
 
     exitcode=$(echo "$json" | jq -r '.exitcode // 1' 2>/dev/null || echo 1)
-
     output=$(echo "$json" | jq -r '.["out-data"] // ""' 2>/dev/null || true)
 
     printf '%s' "$output"
@@ -92,6 +91,50 @@ vm_guest_agent_available() {
     local vmid="$1"
 
     qm agent "$vmid" ping >/dev/null 2>&1
+}
+
+# ------------------------------------------------------------
+# Detectar sistema operacional da VM
+#
+# Retorno:
+#   linux
+#   windows
+#   unknown
+# ------------------------------------------------------------
+
+detect_vm_os() {
+    local vmid="$1"
+
+    # --------------------------------------------------------
+    # Linux
+    #
+    # O arquivo /etc/os-release é padrão nas distribuições
+    # Linux modernas.
+    # --------------------------------------------------------
+
+    if vm_exec "$vmid" sh -c \
+        'test -f /etc/os-release' \
+        >/dev/null 2>&1
+    then
+        echo "linux"
+        return 0
+    fi
+
+    # --------------------------------------------------------
+    # Windows
+    #
+    # cmd.exe /c ver existe em Windows.
+    # --------------------------------------------------------
+
+    if vm_exec "$vmid" cmd.exe /c ver \
+        >/dev/null 2>&1
+    then
+        echo "windows"
+        return 0
+    fi
+
+    echo "unknown"
+    return 0
 }
 
 # ------------------------------------------------------------
@@ -252,7 +295,6 @@ start_agent() {
     fi
 
     warn "  ✗ PatchMon Agent não iniciou via systemd."
-
     info "  Tentando iniciar Agent manualmente..."
 
     vm_exec "$vmid" sh -c '
@@ -359,8 +401,6 @@ enroll_vm() {
     local api_id
     local api_key
 
-    # Friendly Name no PatchMon
-    # Exemplo: VM-104-Debian
     friendly_name="VM-${vmid}-${hostname}"
 
     info "  Fazendo enrollment no PatchMon..."
@@ -416,9 +456,9 @@ enroll_vm() {
             echo "$body"
             return 1
             ;;
+
     esac
 }
-
 
 # ------------------------------------------------------------
 # Informações da VM
@@ -533,6 +573,7 @@ while IFS= read -r line; do
     name=$(echo "$line" | cut -d' ' -f4-)
 
     echo
+
     info "=========================================================="
     info "VM $vmid - $name - $status"
     info "=========================================================="
@@ -561,6 +602,57 @@ while IFS= read -r line; do
     fi
 
     info "✓ QEMU Guest Agent está disponível."
+
+    # --------------------------------------------------------
+    # DETECÇÃO DO SISTEMA OPERACIONAL
+    #
+    # IMPORTANTE:
+    # A detecção acontece antes de qualquer função Linux.
+    #
+    # Isso impede que Windows seja submetido a:
+    #
+    #   sh
+    #   /etc/os-release
+    #   /etc/machine-id
+    #   uname
+    #   apt-get
+    #   apk
+    #   dnf
+    #   yum
+    #   cron
+    #   procps
+    #   systemctl
+    #
+    # --------------------------------------------------------
+
+    guest_os=$(detect_vm_os "$vmid")
+
+    case "$guest_os" in
+
+        windows)
+
+            info "✓ Windows detectado na VM $vmid."
+            info "Windows não será processado pelo Auto-Enrollment Linux."
+            info "VM $vmid ignorada."
+
+            continue
+            ;;
+
+        linux)
+
+            info "✓ Linux detectado na VM $vmid."
+
+            ;;
+
+        *)
+
+            warn "Não foi possível identificar o sistema operacional da VM $vmid."
+            warn "VM $vmid será ignorada."
+
+            continue
+            ;;
+
+    esac
 
     # --------------------------------------------------------
     # Informações da VM
@@ -644,6 +736,7 @@ while IFS= read -r line; do
                 fi
 
                 continue
+
             fi
 
         fi
@@ -666,9 +759,13 @@ while IFS= read -r line; do
                 /usr/local/bin/patchmon-agent ping \
                 >/dev/null 2>&1
             then
+
                 info "✓ Agent comunicando com PatchMon."
+
             else
+
                 warn "Agent iniciou, mas ping falhou."
+
             fi
 
         else
@@ -683,6 +780,7 @@ while IFS= read -r line; do
         # ----------------------------------------------------
 
         continue
+
     fi
 
     # --------------------------------------------------------
@@ -703,6 +801,7 @@ while IFS= read -r line; do
         warn "Ignorando VM."
 
         continue
+
     fi
 
     if ! install_cron_if_needed "$vmid"; then
@@ -711,6 +810,7 @@ while IFS= read -r line; do
         warn "Ignorando VM."
 
         continue
+
     fi
 
     if ! install_procps_if_needed "$vmid"; then
@@ -719,6 +819,7 @@ while IFS= read -r line; do
         warn "Ignorando VM."
 
         continue
+
     fi
 
     # --------------------------------------------------------

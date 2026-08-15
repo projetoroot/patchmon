@@ -92,7 +92,7 @@ root@pve:~# cat /etc/crontab
 
 ---
 
-## Principais vantagens do script Proxmox
+## Principais vantagens do script Projeto Root
 
 | Ponto | Descrição |
 |---|---|
@@ -122,7 +122,7 @@ root@pve:~# cat /etc/crontab
 
 ---
 
-## Principais desvantagens do script Proxmox
+## Principais desvantagens do script Projeto Root
 
 | Ponto | Impacto |
 |---|---|

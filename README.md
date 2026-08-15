@@ -9,9 +9,9 @@ root@pve:~# cat /etc/crontab
 
 ...
 
-*/5 * * * * root /root/patchmon_enroll_cron.sh
+*/5 * * * * root /root/patchmon_lxc_autoenroll_cron.sh
 
-*/5 * * * * root /root/patchmon_enroll_vm.sh
+*/5 * * * * root /root/patchmon_vm_autoenroll_cron.sh
 
 ...
 

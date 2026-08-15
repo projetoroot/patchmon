@@ -34,7 +34,7 @@ root@pve:~# cat /etc/crontab
 | **Detecta hostname** | ✅ | ✅ |
 | **Detecta IP** | ✅ | ✅ |
 | **Detecta arquitetura** | ✅ | ✅ |
-| **Detecta SO** | ❌ Não é o foco do script | ✅ |
+| **Detecta SO(Windows)** | ❌ Não é o foco do script | ✅ |
 | **Detecta Machine ID** | ✅ | ✅ |
 | **Detecta Proxmox Node** | ⚠️ Limitado | ✅ |
 | **Friendly Name personalizado** | ✅ Prefixo/configuração oficial | ✅ Totalmente personalizado |

@@ -10,7 +10,6 @@ AUTO_ENROLLMENT_SECRET="SUA-SECRET-KEY"
 LOG_FILE="/var/log/patchmon-proxmox-vm.log"
 
 CURL_FLAGS="-s"
-SKIP_STOPPED=true
 
 exec >> "$LOG_FILE" 2>&1
 
@@ -19,6 +18,10 @@ echo "=============================================================="
 echo " PatchMon Proxmox VM Auto-Enrollment"
 echo " $(date '+%Y-%m-%d %H:%M:%S')"
 echo "=============================================================="
+
+# ------------------------------------------------------------
+# Logging
+# ------------------------------------------------------------
 
 info() {
     echo "[INFO] $*"
@@ -51,6 +54,8 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
 fi
 
+PROXMOX_NODE=$(hostname)
+
 # ------------------------------------------------------------
 # Execução dentro da VM
 # ------------------------------------------------------------
@@ -71,8 +76,11 @@ vm_exec() {
         return "$rc"
     fi
 
-    exitcode=$(echo "$json" | jq -r '.exitcode // 1' 2>/dev/null || echo 1)
-    output=$(echo "$json" | jq -r '.["out-data"] // ""' 2>/dev/null || true)
+    exitcode=$(echo "$json" |
+        jq -r '.exitcode // 1' 2>/dev/null)
+
+    output=$(echo "$json" |
+        jq -r '.["out-data"] // ""' 2>/dev/null || true)
 
     printf '%s' "$output"
 
@@ -94,7 +102,7 @@ vm_guest_agent_available() {
 }
 
 # ------------------------------------------------------------
-# Detectar sistema operacional da VM
+# Detectar sistema operacional
 #
 # Retorno:
 #   linux
@@ -107,9 +115,6 @@ detect_vm_os() {
 
     # --------------------------------------------------------
     # Linux
-    #
-    # O arquivo /etc/os-release é padrão nas distribuições
-    # Linux modernas.
     # --------------------------------------------------------
 
     if vm_exec "$vmid" sh -c \
@@ -122,8 +127,6 @@ detect_vm_os() {
 
     # --------------------------------------------------------
     # Windows
-    #
-    # cmd.exe /c ver existe em Windows.
     # --------------------------------------------------------
 
     if vm_exec "$vmid" cmd.exe /c ver \
@@ -138,13 +141,14 @@ detect_vm_os() {
 }
 
 # ------------------------------------------------------------
-# Verificar Agent
+# Verificar PatchMon Agent
 # ------------------------------------------------------------
 
 vm_has_agent() {
     local vmid="$1"
 
-    vm_exec "$vmid" test -x /usr/local/bin/patchmon-agent \
+    vm_exec "$vmid" \
+        test -x /usr/local/bin/patchmon-agent \
         >/dev/null 2>&1
 }
 
@@ -175,16 +179,20 @@ install_curl_if_needed() {
         export DEBIAN_FRONTEND=noninteractive
 
         if command -v apt-get >/dev/null 2>&1; then
+
             apt-get update -qq &&
             apt-get install -y -qq curl
 
         elif command -v apk >/dev/null 2>&1; then
+
             apk add --no-cache curl
 
         elif command -v dnf >/dev/null 2>&1; then
+
             dnf install -y curl
 
         elif command -v yum >/dev/null 2>&1; then
+
             yum install -y curl
 
         else
@@ -216,16 +224,20 @@ install_cron_if_needed() {
         export DEBIAN_FRONTEND=noninteractive
 
         if command -v apt-get >/dev/null 2>&1; then
+
             apt-get update -qq &&
             apt-get install -y -qq cron
 
         elif command -v apk >/dev/null 2>&1; then
+
             apk add --no-cache dcron
 
         elif command -v dnf >/dev/null 2>&1; then
+
             dnf install -y cronie
 
         elif command -v yum >/dev/null 2>&1; then
+
             yum install -y cronie
 
         else
@@ -255,16 +267,20 @@ install_procps_if_needed() {
         export DEBIAN_FRONTEND=noninteractive
 
         if command -v apt-get >/dev/null 2>&1; then
+
             apt-get update -qq &&
             apt-get install -y -qq procps
 
         elif command -v apk >/dev/null 2>&1; then
+
             apk add --no-cache procps
 
         elif command -v dnf >/dev/null 2>&1; then
+
             dnf install -y procps-ng
 
         elif command -v yum >/dev/null 2>&1; then
+
             yum install -y procps-ng
 
         else
@@ -284,17 +300,20 @@ start_agent() {
 
     info "  Iniciando PatchMon Agent..."
 
-    vm_exec "$vmid" systemctl enable --now patchmon-agent \
+    vm_exec "$vmid" \
+        systemctl enable --now patchmon-agent \
         >/dev/null 2>&1 || true
 
     sleep 2
 
     if vm_agent_running "$vmid"; then
+
         info "  ✓ PatchMon Agent está executando"
         return 0
+
     fi
 
-    warn "  ✗ PatchMon Agent não iniciou via systemd."
+    warn "  Agent não iniciou via systemd."
     info "  Tentando iniciar Agent manualmente..."
 
     vm_exec "$vmid" sh -c '
@@ -309,11 +328,14 @@ start_agent() {
     sleep 2
 
     if vm_agent_running "$vmid"; then
+
         info "  ✓ PatchMon Agent iniciado manualmente"
         return 0
+
     fi
 
     warn "  ✗ PatchMon Agent não iniciou"
+
     return 1
 }
 
@@ -335,33 +357,40 @@ install_agent() {
 
     info "  Instalando PatchMon Agent..."
 
-    result=$(vm_exec "$vmid" sh -c "
+    result=$(vm_exec "$vmid" sh -c '
+        api_id="$1"
+        api_key="$2"
+        install_url="$3"
+
         cd /tmp || exit 1
 
         curl -s \
-            -H 'X-API-ID: $api_id' \
-            -H 'X-API-KEY: $api_key' \
+            -H "X-API-ID: $api_id" \
+            -H "X-API-KEY: $api_key" \
             -o patchmon-install.sh \
-            '$install_url' || exit 1
+            "$install_url" || exit 1
 
         chmod +x patchmon-install.sh
 
         sh patchmon-install.sh
 
-        rc=\$?
+        rc=$?
 
         rm -f patchmon-install.sh
 
-        exit \$rc
-    " 2>&1)
+        exit "$rc"
+
+    ' sh "$api_id" "$api_key" "$install_url" 2>&1)
 
     rc=$?
 
     echo "$result"
 
     if [ "$rc" -eq 0 ]; then
+
         info "  ✓ Instalação concluída"
         return 0
+
     fi
 
     # --------------------------------------------------------
@@ -372,13 +401,15 @@ install_agent() {
     if vm_has_agent "$vmid"; then
 
         info "  ✓ PatchMon Agent foi instalado."
-        info "  ⚠ O instalador retornou código $rc."
+        info "  ⚠ Instalador retornou código $rc."
         info "  Verificando serviço manualmente..."
 
         return 0
+
     fi
 
     warn "  ✗ Falha na instalação. Código: $rc"
+
     return 1
 }
 
@@ -388,39 +419,77 @@ install_agent() {
 
 enroll_vm() {
     local vmid="$1"
-    local hostname="$2"
-    local ip="$3"
-    local os="$4"
-    local architecture="$5"
-    local machine_id="$6"
+    local name="$2"
+    local hostname="$3"
+    local ip="$4"
+    local os="$5"
+    local architecture="$6"
+    local machine_id="$7"
 
     local friendly_name
+    local payload
     local response
     local body
     local http_code
     local api_id
     local api_key
 
-    friendly_name="VM-${vmid}-${hostname}"
+    # --------------------------------------------------------
+    # Friendly Name
+    #
+    # Formato:
+    #
+    # VMID-Nome-da-VM-no-Proxmox
+    #
+    # Exemplo:
+    #
+    # 101-SRV-ZABBIX
+    # --------------------------------------------------------
+
+    friendly_name="${vmid}-${name}"
 
     info "  Fazendo enrollment no PatchMon..."
     info "  Friendly Name: $friendly_name"
+    info "  System Hostname: $hostname"
+    info "  Proxmox Node: $PROXMOX_NODE"
+
+    # --------------------------------------------------------
+    # Construir JSON com jq
+    #
+    # Isso evita problemas com:
+    #   espaços
+    #   aspas
+    #   caracteres especiais
+    #   nomes de VM
+    #   hostname
+    # --------------------------------------------------------
+
+    payload=$(jq -n \
+        --arg friendly_name "$friendly_name" \
+        --arg machine_id "$machine_id" \
+        --arg vmid "$vmid" \
+        --arg proxmox_node "$PROXMOX_NODE" \
+        --arg hostname "$hostname" \
+        --arg ip_address "$ip" \
+        --arg os_info "$os" \
+        '{
+            friendly_name: $friendly_name,
+            machine_id: $machine_id,
+            metadata: {
+                vmid: $vmid,
+                proxmox_node: $proxmox_node,
+                hostname: $hostname,
+                ip_address: $ip_address,
+                os_info: $os_info
+            }
+        }')
 
     response=$(curl $CURL_FLAGS \
         -X POST \
         -H "X-Auto-Enrollment-Key: $AUTO_ENROLLMENT_KEY" \
         -H "X-Auto-Enrollment-Secret: $AUTO_ENROLLMENT_SECRET" \
         -H "Content-Type: application/json" \
-        -d "{
-            \"friendly_name\": \"$friendly_name\",
-            \"machine_id\": \"$machine_id\",
-            \"metadata\": {
-                \"vmid\": \"$vmid\",
-                \"proxmox_node\": \"$(hostname)\",
-                \"ip_address\": \"$ip\",
-                \"os_info\": \"$os\"
-            }
-        }" \
+        -d "$payload" \
         "$PATCHMON_URL/api/v1/auto-enrollment/enroll" \
         -w "\n%{http_code}" 2>&1)
 
@@ -430,38 +499,70 @@ enroll_vm() {
     case "$http_code" in
 
         201)
-            api_id=$(echo "$body" | jq -r '.host.api_id // empty')
-            api_key=$(echo "$body" | jq -r '.host.api_key // empty')
+
+            api_id=$(echo "$body" |
+                jq -r '.host.api_id // empty')
+
+            api_key=$(echo "$body" |
+                jq -r '.host.api_key // empty')
 
             if [ -z "$api_id" ] || [ -z "$api_key" ]; then
+
                 warn "  Enrollment retornou credenciais inválidas."
+
+                echo "$body"
+
                 return 1
+
             fi
 
             info "  ✓ Host criado no PatchMon: $api_id"
             info "  ✓ Friendly Name: $friendly_name"
 
-            install_agent "$vmid" "$api_id" "$api_key" "$architecture"
+            install_agent \
+                "$vmid" \
+                "$api_id" \
+                "$api_key" \
+                "$architecture"
+
             return $?
 
             ;;
 
         409)
+
             info "  Host já está cadastrado no PatchMon."
+
             return 2
+
             ;;
 
         *)
+
             warn "  Enrollment falhou. HTTP $http_code"
+
             echo "$body"
+
             return 1
+
             ;;
 
     esac
 }
 
 # ------------------------------------------------------------
-# Informações da VM
+# Nome da VM no Proxmox
+# ------------------------------------------------------------
+
+get_proxmox_vm_name() {
+    local vmid="$1"
+
+    qm config "$vmid" 2>/dev/null |
+        awk -F': ' '$1 == "name" {print $2; exit}'
+}
+
+# ------------------------------------------------------------
+# Hostname dentro da VM
 # ------------------------------------------------------------
 
 get_vm_hostname() {
@@ -470,22 +571,37 @@ get_vm_hostname() {
     vm_exec "$vmid" hostname
 }
 
+# ------------------------------------------------------------
+# IP da VM
+# ------------------------------------------------------------
+
 get_vm_ip() {
     local vmid="$1"
     local ips
+    local ip
 
     ips=$(vm_exec "$vmid" hostname -I 2>/dev/null || true)
 
-    echo "$ips" |
+    ip=$(echo "$ips" |
         awk '{
             for (i=1; i<=NF; i++) {
-                if ($i !~ /:/) {
+                if ($i !~ /:/ && $i != "127.0.0.1") {
                     print $i
                     exit
                 }
             }
-        }'
+        }')
+
+    if [ -n "$ip" ]; then
+        echo "$ip"
+    else
+        echo "unknown"
+    fi
 }
+
+# ------------------------------------------------------------
+# Sistema operacional
+# ------------------------------------------------------------
 
 get_vm_os() {
     local vmid="$1"
@@ -500,18 +616,26 @@ get_vm_os() {
     '
 }
 
+# ------------------------------------------------------------
+# Machine ID
+# ------------------------------------------------------------
+
 get_vm_machine_id() {
     local vmid="$1"
 
     vm_exec "$vmid" sh -c '
         if [ -f /etc/machine-id ]; then
+
             cat /etc/machine-id
 
         elif [ -f /var/lib/dbus/machine-id ]; then
+
             cat /var/lib/dbus/machine-id
 
         else
+
             exit 1
+
         fi
     '
 }
@@ -524,7 +648,11 @@ get_vm_architecture() {
     local vmid="$1"
     local arch_raw
 
-    arch_raw=$(vm_exec "$vmid" uname -m 2>/dev/null || echo "unknown")
+    arch_raw=$(vm_exec "$vmid" uname -m 2>/dev/null ||
+        echo "unknown")
+
+    arch_raw=$(echo "$arch_raw" |
+        tr -d '\r\n')
 
     case "$arch_raw" in
 
@@ -555,22 +683,49 @@ get_vm_architecture() {
 # Descoberta das VMs
 # ------------------------------------------------------------
 
+info "Nó Proxmox: $PROXMOX_NODE"
 info "Descobrindo VMs..."
 
-vm_list=$(qm list | tail -n +2)
+vm_list=$(qm list 2>/dev/null | tail -n +2)
 
 if [ -z "$vm_list" ]; then
+
     info "Nenhuma VM encontrada."
+
     exit 0
+
 fi
+
+# ------------------------------------------------------------
+# Processar VMs
+# ------------------------------------------------------------
 
 while IFS= read -r line; do
 
     [ -z "$line" ] && continue
 
-    vmid=$(echo "$line" | awk '{print $1}')
-    status=$(echo "$line" | awk '{print $3}')
-    name=$(echo "$line" | cut -d' ' -f4-)
+    vmid=$(echo "$line" |
+        awk '{print $1}')
+
+    status=$(echo "$line" |
+        awk '{print $3}')
+
+    # --------------------------------------------------------
+    # Obter nome diretamente da configuração da VM.
+    #
+    # Não utilizamos cut/awk sobre "qm list" para isso,
+    # pois o nome pode conter espaços.
+    # --------------------------------------------------------
+
+    name=$(get_proxmox_vm_name "$vmid")
+
+    if [ -z "$name" ]; then
+
+        warn "Não foi possível obter o nome da VM $vmid."
+
+        continue
+
+    fi
 
     echo
 
@@ -587,6 +742,7 @@ while IFS= read -r line; do
         info "VM parada. Ignorando."
 
         continue
+
     fi
 
     # --------------------------------------------------------
@@ -599,30 +755,13 @@ while IFS= read -r line; do
         warn "Verifique se o agente está instalado e habilitado."
 
         continue
+
     fi
 
     info "✓ QEMU Guest Agent está disponível."
 
     # --------------------------------------------------------
-    # DETECÇÃO DO SISTEMA OPERACIONAL
-    #
-    # IMPORTANTE:
-    # A detecção acontece antes de qualquer função Linux.
-    #
-    # Isso impede que Windows seja submetido a:
-    #
-    #   sh
-    #   /etc/os-release
-    #   /etc/machine-id
-    #   uname
-    #   apt-get
-    #   apk
-    #   dnf
-    #   yum
-    #   cron
-    #   procps
-    #   systemctl
-    #
+    # Detectar sistema operacional
     # --------------------------------------------------------
 
     guest_os=$(detect_vm_os "$vmid")
@@ -636,6 +775,7 @@ while IFS= read -r line; do
             info "VM $vmid ignorada."
 
             continue
+
             ;;
 
         linux)
@@ -650,6 +790,7 @@ while IFS= read -r line; do
             warn "VM $vmid será ignorada."
 
             continue
+
             ;;
 
     esac
@@ -672,11 +813,35 @@ while IFS= read -r line; do
     machine_id=$(get_vm_machine_id "$vmid" 2>/dev/null ||
         echo "proxmox-vm-$vmid")
 
-    hostname=$(echo "$hostname" | tr -d '\r\n')
-    ip_address=$(echo "$ip_address" | tr -d '\r\n')
-    os_info=$(echo "$os_info" | tr -d '\r\n')
-    machine_id=$(echo "$machine_id" | tr -d '\r\n')
+    # --------------------------------------------------------
+    # Limpar valores
+    # --------------------------------------------------------
 
+    hostname=$(echo "$hostname" |
+        tr -d '\r\n')
+
+    ip_address=$(echo "$ip_address" |
+        tr -d '\r\n')
+
+    os_info=$(echo "$os_info" |
+        tr -d '\r\n')
+
+    machine_id=$(echo "$machine_id" |
+        tr -d '\r\n')
+
+    # --------------------------------------------------------
+    # Validar hostname
+    # --------------------------------------------------------
+
+    if [ -z "$hostname" ]; then
+        hostname="$name"
+    fi
+
+    # --------------------------------------------------------
+    # Informações
+    # --------------------------------------------------------
+
+    info "VM Name: $name"
     info "Hostname: $hostname"
     info "IP: $ip_address"
     info "OS: $os_info"
@@ -775,8 +940,7 @@ while IFS= read -r line; do
         fi
 
         # ----------------------------------------------------
-        # IMPORTANTE:
-        # Não faz novo enrollment.
+        # Não fazer novo enrollment
         # ----------------------------------------------------
 
         continue
@@ -790,7 +954,7 @@ while IFS= read -r line; do
     info "PatchMon Agent não encontrado."
 
     # --------------------------------------------------------
-    # Dependências da VM
+    # Dependências
     # --------------------------------------------------------
 
     info "Verificando dependências da VM $vmid..."
@@ -828,6 +992,7 @@ while IFS= read -r line; do
 
     enroll_vm \
         "$vmid" \
+        "$name" \
         "$hostname" \
         "$ip_address" \
         "$os_info" \
@@ -843,10 +1008,6 @@ while IFS= read -r line; do
     if [ "$enroll_rc" -eq 0 ]; then
 
         sleep 2
-
-        # ----------------------------------------------------
-        # Verificar Agent
-        # ----------------------------------------------------
 
         if vm_has_agent "$vmid"; then
 
@@ -894,8 +1055,7 @@ while IFS= read -r line; do
         info "Host já existente no PatchMon."
 
         # ----------------------------------------------------
-        # Não fazemos novo enrollment.
-        # Apenas verificamos novamente o Agent.
+        # Não fazer novo enrollment.
         # ----------------------------------------------------
 
         if vm_has_agent "$vmid"; then

@@ -446,7 +446,7 @@ enroll_vm() {
     # 101-SRV-ZABBIX
     # --------------------------------------------------------
 
-    friendly_name="${vmid}-${name}"
+    friendly_name="VM-${vmid}-${name}"
 
     info "  Fazendo enrollment no PatchMon..."
     info "  Friendly Name: $friendly_name"

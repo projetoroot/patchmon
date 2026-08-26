@@ -1,4 +1,49 @@
 #!/bin/bash
+#########################################################################################
+#                AUTO-ENROLLMENT PATCHMON PARA VMs PROXMOX                              #
+# Se você utiliza Proxmox e possui máquinas virtuais Linux nele, esse script é para     #
+# você. Ele vai descobrir automaticamente (através da cron) as VMs em execução,         #
+# verificar o QEMU Guest Agent, identificar o sistema operacional e coletar informações #
+# como hostname, IP,arquitetura e Machine ID.                                           #
+#                                                                                       #
+# O script ignora VMs desligadas, VMs Windows e sistemas operacionais não identificados.#
+# Para as VMs Linux, verifica se o PatchMon Agent já está instalado e executando.       #
+# Caso o Agent já esteja funcionando e comunicando com o PatchMon, nenhuma alteração    #
+# será realizada.                                                                       #
+#                                                                                       #
+# Caso o Agent não esteja instalado, o script verifica e instala automaticamente as     #
+# dependências necessárias, realiza o auto-enrollment da VM no PatchMon utilizando a    #
+# API de Auto-Enrollment e instala o PatchMon Agent dentro da VM através do QEMU        #
+# Guest Agent do Proxmox.                                                               #
+#                                                                                       #
+# Após a instalação, o script inicia o Agent, verifica se o processo está executando    #
+# e realiza um teste de comunicação com o PatchMon.                                     #
+#                                                                                       #
+# O script também trata VMs que já estejam cadastradas no PatchMon, evitando realizar   #
+# um novo enrollment e criar hosts duplicados.                                          #
+#                                                                                       #
+# Dependências no Proxmox:                                                              #
+#   - qm                                                                                #
+#   - curl                                                                              #
+#   - jq                                                                                #
+#                                                                                       #
+# Requisito nas VMs:                                                                    #
+#   - QEMU Guest Agent instalado e funcionando                                          #
+#   - Sistema operacional Linux                                                         #
+#                                                                                       #
+# Informações enviadas ao PatchMon:                                                     #
+#   - VMID                                                                              #
+#   - Nome da VM                                                                        #
+#   - Hostname                                                                          #
+#   - Endereço IP                                                                       #
+#   - Sistema operacional                                                               #
+#   - Arquitetura                                                                       #
+#   - Machine ID                                                                        #
+#   - Nó Proxmox                                                                        #
+# Autor: Diego Costa (@diegocostaroot) / Projeto Root (youtube.com/projetoroot)         #
+# Versão: 1.0                                                                           #
+# 2026                                                                                  #
+#########################################################################################
 
 set -u
 set -o pipefail

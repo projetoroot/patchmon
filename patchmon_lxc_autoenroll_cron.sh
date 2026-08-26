@@ -1,4 +1,67 @@
 #!/bin/bash
+#####################################################################################
+#            AUTO-ENROLLMENT PATCHMON PARA CONTAINERS LXC DO PROXMOX                #
+# Se você utiliza Proxmox e possui containers LXC Linux nele, esse script é para    #
+# você. Ele vai descobrir automaticamente (através da cron) os containers em        #
+# execução, coletar informações como hostname, IP, sistema operacional, arquitetura #
+# e Machine ID e realizar o cadastro automático dos containers no PatchMon.         #
+#                                                                                   #
+# O script ignora containers parados e verifica se o PatchMon Agent já está         #
+# instalado e executando. Caso o Agent esteja funcionando e comunicando com o       #
+# PatchMon, nenhuma alteração será realizada.                                       #
+#                                                                                   #
+# Caso o Agent não esteja instalado, o script verifica e instala automaticamente    #
+# as dependências necessárias, realiza o auto-enrollment do container no PatchMon   #
+# utilizando a API de Auto-Enrollment e instala o PatchMon Agent dentro do LXC.     #
+#                                                                                   #
+# O script suporta diferentes sistemas de inicialização dentro dos containers,      #
+# incluindo systemd, OpenRC e Supervisor. Quando não existe um sistema de           #
+# inicialização compatível, o Agent pode ser iniciado diretamente pelo Proxmox      #
+# como root.                                                                        #
+#                                                                                   #
+# Para containers que utilizam Supervisor ou não possuem um sistema de inicialização#
+# compatível, o script pode criar um wrapper de manutenção em                       #
+# /usr/local/sbin/patchmon-agent-wrapper, permitindo iniciar o Agent diretamente    #
+# pelo Proxmox sem depender do Supervisor ou de outro serviço interno.              #
+#                                                                                   #
+# Dependências no Proxmox:                                                          #
+#   - pct                                                                           #
+#   - curl                                                                          #
+#   - jq                                                                            #
+#                                                                                   #
+# Dependências verificadas nos containers:                                          #
+#   - curl                                                                          #
+#   - cron                                                                          #
+#   - procps                                                                        #
+#                                                                                   #
+# Informações coletadas dos containers:                                             #
+#   - CTID                                                                          #
+#   - Hostname                                                                      #
+#   - Endereço IP                                                                   #
+#   - Sistema operacional                                                           #
+#   - Arquitetura                                                                   #
+#   - Machine ID                                                                    #
+#   - Nó Proxmox                                                                    #
+#                                                                                   #
+# O script utiliza o Machine ID como identificador da máquina e envia informações   #
+# adicionais do container como metadata para o PatchMon.                            #
+#                                                                                   #
+# O Friendly Name criado no PatchMon utiliza o formato:                             #
+#   CT-ID-HOSTNAME                                                                  #
+#                                                                                   #
+# Exemplo:                                                                          #
+#   CT-214-servidor-web                                                             #
+#                                                                                   #
+# Após o enrollment, o script verifica o Agent, inicia o serviço conforme o sistema #
+# de inicialização detectado e valida se o processo está ativo.                     #
+#                                                                                   #
+# O script também trata containers que já estejam cadastrados no PatchMon, evitando #
+# realizar um novo enrollment e criar hosts duplicados.                             #
+#                                                                                   #
+# Autor: Diego Costa (@diegocostaroot) / Projeto Root (youtube.com/projetoroot)     #
+# Versão: 1.0                                                                       #
+# 2026                                                                              #
+#####################################################################################
 
 set -u
 set -o pipefail

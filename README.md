@@ -14,7 +14,8 @@ root@pve:~# cat /etc/crontab
 */5 * * * * root /root/patchmon_vm_autoenroll_cron.sh
 
 ...
-# Projeto Oficial: https://github.com/PatchMon/PatchMon
+# Projeto Oficial: 
+https://github.com/PatchMon/PatchMon
 
 # Comparação: Auto-Enrollment Oficial do PatchMon vs Script Proxmox do Projeto Root
 
